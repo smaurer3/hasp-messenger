@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HASP Messenger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Versioned asset URLs so updates can't be held back by CF/browser cache. -->
+  <link rel="stylesheet" href="/static/style.css?v=3" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>HASP Messenger</h1>
+    <div class="status">
+      <label class="plate-select-wrap">
+        Plate
+        <select id="plate-select"></select>
+      </label>
+      <span id="mqtt-dot" class="dot dot-off" title="MQTT disconnected"></span>
+      <span id="mqtt-status">MQTT: disconnected</span>
+      <span id="plate-dot" class="dot dot-off" title="Plate offline"></span>
+      <span id="plate-status">Plate: ?</span>
+      <span class="user-info">
+        <span id="user-email" class="user-email">…</span>
+        <span id="user-role" class="role-badge"></span>
+      </span>
+      <button id="open-users" style="display:none">Users</button>
+      <button id="open-broker">Setup</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- LEFT: Editor -->
+    <section class="panel editor">
+      <h2>Compose message</h2>
+
+      <label>Text
+        <textarea id="f-text" rows="3" placeholder="Use #RRGGBB text# for inline colour, e.g. Please #222222 Raise Mic#"></textarea>
+      </label>
+
+      <div class="grid2">
+        <label>Font size
+          <select id="f-font">
+            <option>12</option><option>16</option><option>22</option>
+            <option>28</option><option>32</option><option selected>48</option>
+            <option>56</option><option>72</option><option>85</option>
+          </select>
+        </label>
+        <label>Align
+          <select id="f-align">
+            <option value="left">Left</option>
+            <option value="center" selected>Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <label>Text colour
+          <input type="color" id="f-text-color" value="#FFFFFF" />
+        </label>
+        <label>BG colour
+          <input type="color" id="f-bg-color" value="#FF0000" />
+        </label>
+        <label>BG opacity
+          <input type="range" id="f-bg-opa" min="0" max="255" value="255" />
+          <span id="f-bg-opa-val">255</span>
+        </label>
+        <label>Mode
+          <select id="f-mode">
+            <option value="break" selected>break (wrap)</option>
+            <option value="expand">expand</option>
+            <option value="dots">dots (ellipsis)</option>
+            <option value="scroll">scroll</option>
+            <option value="loop">loop</option>
+            <option value="crop">crop</option>
+          </select>
+        </label>
+      </div>
+
+      <fieldset class="box-fs">
+        <legend><span id="ps-legend">Position &amp; size (480 × 320)</span></legend>
+        <div class="grid4">
+          <label>X<input type="number" id="f-x" value="10" min="0" max="480"></label>
+          <label>Y<input type="number" id="f-y" value="85" min="0" max="320"></label>
+          <label>W<input type="number" id="f-w" value="460" min="0" max="480"></label>
+          <label>H<input type="number" id="f-h" value="150" min="0" max="320"></label>
+        </div>
+        <div class="grid4">
+          <label>Pad T<input type="number" id="f-pt" value="25" min="0"></label>
+          <label>Pad B<input type="number" id="f-pb" value="25" min="0"></label>
+          <label>Pad L<input type="number" id="f-pl" value="0" min="0"></label>
+          <label>Pad R<input type="number" id="f-pr" value="0" min="0"></label>
+        </div>
+        <div class="presets">
+          Quick fit:
+          <button data-preset="full">Full screen</button>
+          <button data-preset="middle">Middle band</button>
+          <button data-preset="top">Top banner</button>
+          <button data-preset="bottom">Bottom banner</button>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <label>Auto-clear (sec, blank = manual)
+          <input type="number" id="f-duration" value="30" min="0" step="1" placeholder="e.g. 30">
+        </label>
+        <button id="btn-send" class="primary">Send to plate</button>
+        <button id="btn-clear">Clear plate</button>
+        <button id="btn-init" title="Create the overlay label on the plate (hidden). Useful first-run or after a plate reboot.">Init overlay</button>
+      </div>
+    </section>
+
+    <!-- CENTRE: Preview + Snapshot stacked -->
+    <div class="center-col">
+      <section class="panel preview-wrap">
+        <h2>Live preview — <span id="preview-plate-name">—</span></h2>
+        <div class="plate-frame">
+          <div class="plate" id="plate">
+            <div class="plate-bg" id="plate-bg">
+              <div class="bg-clock" id="bg-clock">09:49:15 AM</div>
+              <div class="bg-date" id="bg-date">24 May 2026</div>
+            </div>
+            <div class="overlay" id="overlay"></div>
+          </div>
+        </div>
+        <details class="raw">
+          <summary>Raw JSONL payload</summary>
+          <pre id="raw-payload"></pre>
+        </details>
+      </section>
+
+      <section class="panel snapshot-wrap">
+        <div class="snapshot-head">
+          <h2>Snapshot — <span id="snapshot-plate-name">—</span></h2>
+          <button id="snapshot-refresh" title="Fetch a fresh screenshot from the plate">↻ Refresh</button>
+        </div>
+        <div class="plate-frame snapshot-frame">
+          <img id="snapshot-img" alt="Plate snapshot" />
+          <div id="snapshot-empty" class="snapshot-empty">No snapshot yet — set the plate's IP in Setup, then press Refresh.</div>
+        </div>
+        <div class="meta">
+          <span id="display-state">Idle</span>
+          <span id="display-countdown"></span>
+        </div>
+        <div class="meta">
+          <span id="snapshot-status">Idle</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT: Templates -->
+    <aside class="panel templates">
+      <h2>Templates</h2>
+      <div class="tpl-new">
+        <input id="tpl-name" placeholder="Template name">
+        <button id="tpl-save">Save current</button>
+      </div>
+      <ul id="tpl-list" class="tpl-list"></ul>
+    </aside>
+  </main>
+
+  <!-- Setup modal -->
+  <dialog id="broker-modal">
+    <form method="dialog" id="broker-form">
+      <h2>Setup</h2>
+
+      <fieldset class="box-fs">
+        <legend>Plates</legend>
+        <div id="plates-list" class="plates-list"></div>
+        <button type="button" id="add-plate">+ Add plate</button>
+      </fieldset>
+
+      <fieldset class="box-fs">
+        <legend>MQTT broker</legend>
+        <label>Host
+          <input id="b-host" type="text" placeholder="broker.example.com">
+        </label>
+        <div class="grid2">
+          <label>Port
+            <input id="b-port" type="number" value="8883" min="1" max="65535">
+          </label>
+          <label class="checkrow">
+            <input id="b-tls" type="checkbox" checked> Use TLS
+          </label>
+        </div>
+        <div class="grid2">
+          <label>Username
+            <input id="b-user" type="text" autocomplete="username">
+          </label>
+          <label>Password
+            <input id="b-pass" type="password" autocomplete="current-password" placeholder="(unchanged)">
+          </label>
+        </div>
+        <label class="checkrow">
+          <input id="b-clearpw" type="checkbox"> Clear stored password
+        </label>
+        <label>Client ID
+          <input id="b-cid" type="text" value="hasp-messenger">
+        </label>
+      </fieldset>
+
+      <fieldset class="box-fs">
+        <legend>Cloudflare Access sync</legend>
+        <label class="checkrow">
+          <input id="cf-enabled" type="checkbox"> Mirror user add/delete to a Cloudflare Access policy
+        </label>
+        <label>API token
+          <input id="cf-token" type="password" autocomplete="off" placeholder="(unchanged)">
+        </label>
+        <label class="checkrow">
+          <input id="cf-clear-token" type="checkbox"> Clear stored token
+        </label>
+        <label>Account ID
+          <input id="cf-account" type="text" placeholder="32-char account id">
+        </label>
+        <div class="grid2">
+          <label>Application name
+            <input id="cf-appname" type="text" placeholder="e.g. plate">
+          </label>
+          <label>Policy name
+            <input id="cf-policyname" type="text" placeholder="e.g. Plate">
+          </label>
+        </div>
+        <div class="cf-status">
+          <button type="button" id="cf-test">Test connection</button>
+          <span id="cf-status-msg" class="cf-status-msg"></span>
+        </div>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button type="button" id="b-cancel">Cancel</button>
+        <button type="submit" id="b-save" class="primary">Save &amp; reconnect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Template for a single plate row inside Setup modal -->
+  <template id="plate-row-template">
+    <div class="plate-row" data-plate-id="">
+      <div class="plate-row-head">
+        <input class="p-name" type="text" placeholder="Plate name">
+        <button type="button" class="p-delete" title="Remove this plate">×</button>
+      </div>
+      <div class="grid2">
+        <label>Topic prefix
+          <input class="p-prefix" type="text" placeholder="hasp/plate">
+        </label>
+        <label>IP / hostname (for snapshot)
+          <input class="p-ip" type="text" placeholder="192.168.x.x">
+        </label>
+      </div>
+      <div class="grid4">
+        <label>W <input class="p-w" type="number" value="480" min="1" max="4096"></label>
+        <label>H <input class="p-h" type="number" value="320" min="1" max="4096"></label>
+        <label>Overlay id <input class="p-oid" type="number" value="240"></label>
+        <label>Page <input class="p-opg" type="number" value="1"></label>
+      </div>
+      <div class="presets">
+        Common sizes:
+        <button type="button" data-size="480x320">480 × 320</button>
+        <button type="button" data-size="320x240">320 × 240</button>
+        <button type="button" data-size="800x480">800 × 480</button>
+        <button type="button" data-size="240x320">240 × 320</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- Users page (dedicated modal) -->
+  <dialog id="users-modal" class="users-dialog">
+    <div class="users-page">
+      <header class="users-page-head">
+        <h2>Users</h2>
+        <div class="users-head-actions">
+          <button type="button" id="cf-sync-btn" title="Pull email rules from the Cloudflare Access policy">↻ Sync from Cloudflare</button>
+          <button type="button" id="u-close" class="close-btn" aria-label="Close">×</button>
+        </div>
+      </header>
+      <p class="users-hint">
+        Cloudflare-authenticated users only. LAN-direct access always has full admin
+        (no Cloudflare header), so this list governs SSO users only.
+      </p>
+      <div class="add-user-row">
+        <input id="new-user-email" type="email" placeholder="email@example.com" autocomplete="off">
+        <button type="button" id="add-user" class="primary">+ Add user</button>
+      </div>
+      <div id="users-list" class="users-list"></div>
+      <div id="users-empty" class="users-empty" style="display:none">No Cloudflare users yet — add one above.</div>
+    </div>
+  </dialog>
+
+  <!-- Template for a user row in the Users page -->
+  <template id="user-row-template">
+    <div class="user-row" data-email="">
+      <div class="user-row-head">
+        <span class="u-email"></span>
+        <span class="u-pending-badge" hidden>Pending</span>
+        <label class="u-admin-label"><input type="checkbox" class="u-admin"> Admin</label>
+        <button type="button" class="u-delete" title="Remove user">×</button>
+      </div>
+      <div class="u-plates">
+        <span class="u-plates-label">Plates:</span>
+        <div class="u-plates-checks"></div>
+      </div>
+      <div class="u-admin-all">Admin — automatic access to every plate.</div>
+    </div>
+  </template>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>

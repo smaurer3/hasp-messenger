@@ -1,0 +1,15 @@
+[Unit]
+Description=HASP Messenger (OpenHASP plate message composer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/hasp-messenger
+ExecStart=/home/pi/hasp-messenger/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8081
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
