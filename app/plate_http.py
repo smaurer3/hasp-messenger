@@ -13,6 +13,7 @@ change the message routing just because we moved it between locations.
 from __future__ import annotations
 
 import logging
+import socket
 from typing import Optional
 
 import httpx
@@ -20,6 +21,52 @@ import httpx
 from .models import BrokerConfig, Plate
 
 log = logging.getLogger("hasp.plate_http")
+
+
+_LOOPBACK_NAMES = {"localhost", "0.0.0.0", "::", "::1"}
+
+
+def _is_loopback(host: str) -> bool:
+    """True if `host` resolves to a loopback the plate can't reach."""
+    h = (host or "").strip().lower()
+    if not h:
+        return False
+    if h in _LOOPBACK_NAMES:
+        return True
+    # 127.0.0.0/8
+    return h.startswith("127.")
+
+
+def _lan_ip_toward(plate_ip: str) -> Optional[str]:
+    """Return the local IP the OS would use to reach `plate_ip`.
+
+    UDP connect is a no-op on the wire — it just makes the kernel pick the
+    source address, which is what we want: the right local interface for
+    this specific destination (handles multi-homed hosts, Tailscale, VLANs
+    etc. without hard-coding anything).
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect((plate_ip, 1))
+            return s.getsockname()[0]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _broker_host_for_plate(broker_host: str, plate_ip: str) -> str:
+    """When the server config says the broker is on localhost, the plate
+    obviously can't reach that — swap in the LAN IP of this host (as seen
+    from the plate's perspective) so the plate can actually connect."""
+    if not _is_loopback(broker_host):
+        return broker_host
+    lan_ip = _lan_ip_toward(plate_ip) if plate_ip else None
+    if not lan_ip or lan_ip.startswith("127."):
+        # Fallback — couldn't figure it out. Leave the host as-is; admin
+        # can either fix the broker setting or the plate IP and retry.
+        return broker_host
+    log.info("Substituting broker host %r -> %s for plate at %s",
+             broker_host, lan_ip, plate_ip)
+    return lan_ip
 
 
 class PlateHttpResult:
@@ -51,7 +98,7 @@ async def push_mqtt_config(plate: Plate, broker: BrokerConfig) -> PlateHttpResul
     if base is None:
         return PlateHttpResult(False, "Plate has no IP address set")
     body = {
-        "host": broker.host,
+        "host": _broker_host_for_plate(broker.host, plate.ip_address or ""),
         "port": int(broker.port) if broker.port else 1883,
         "user": broker.username or "",
         "pass": broker.password or "",
