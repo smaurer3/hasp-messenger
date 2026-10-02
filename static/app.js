@@ -795,6 +795,36 @@
       if (!confirm(`Remove plate "${row.querySelector('.p-name').value}"?`)) return;
       row.remove();
     });
+    row.querySelector(".p-push-mqtt").addEventListener("click", async () => {
+      const plateId = row.dataset.plateId;
+      const plateName = row.querySelector(".p-name").value || "this plate";
+      if (!plateId) {
+        toast("Save Setup first so the plate has an id to push to", "error");
+        return;
+      }
+      if (!row.querySelector(".p-ip").value.trim()) {
+        toast("Set the plate's IP address first", "error");
+        return;
+      }
+      const msg = `Push the current MQTT broker settings to "${plateName}" and reboot it?\n\n` +
+                  `The plate will drop its connection and come back on the new broker ` +
+                  `in ~15 seconds. Make sure the broker fields below are what you want ` +
+                  `before continuing — any unsaved Setup changes will NOT be pushed; only ` +
+                  `what's already saved on the server.`;
+      if (!confirm(msg)) return;
+      try {
+        const r = await fetch(`/api/plates/${encodeURIComponent(plateId)}/push-mqtt-config`,
+                              { method: "POST" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          toast(`Push failed: ${j.detail || r.statusText}`, "error");
+          return;
+        }
+        toast(j.detail || "Pushed", "ok");
+      } catch (e) {
+        toast(`Push failed: ${e}`, "error");
+      }
+    });
     row.querySelectorAll("[data-size]").forEach((b) => {
       b.addEventListener("click", () => {
         const [w, h] = b.dataset.size.split("x").map((n) => +n);

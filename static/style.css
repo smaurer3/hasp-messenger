@@ -93,6 +93,7 @@ label.checkrow {
 .plate-row-head { display: flex; gap: 6px; align-items: center; }
 .plate-row-head .p-name { flex: 1; font-weight: 600; }
 .plate-row .p-delete { padding: 2px 8px; }
+.plate-row .p-push-mqtt { padding: 2px 10px; font-size: 12px; white-space: nowrap; }
 .plate-row .presets { margin-top: 4px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 

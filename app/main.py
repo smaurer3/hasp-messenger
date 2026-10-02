@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import cloudflare, config, storage
+from . import cloudflare, config, plate_http, storage
 from . import users as users_store
 from .auth import ResolvedUser, require_admin, resolve_user
 from .models import (
@@ -436,6 +436,32 @@ async def snapshot_api(plate_id: str, request: Request):
         media_type=r.headers.get("Content-Type", "image/bmp"),
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/plates/{plate_id}/push-mqtt-config")
+async def push_mqtt_config_api(
+    plate_id: str,
+    _: ResolvedUser = Depends(require_admin),
+):
+    """Push the current server-side MQTT broker config to the plate's
+    `/api/config/mqtt/` and reboot it so it reconnects to that broker.
+
+    Admin-only (plate reconfig is a Setup-level operation, not a per-plate
+    operator action). The plate must have an IP set.
+    """
+    plate = _get_plate(plate_id)
+    cfg = config.load_config()
+    push = await plate_http.push_mqtt_config(plate, cfg)
+    if not push.ok:
+        raise HTTPException(status_code=502, detail=push.detail)
+    reboot = await plate_http.reboot(plate)
+    if not reboot.ok:
+        # Config landed but reboot didn't — not fatal, admin can reboot manually.
+        return {
+            "ok": True,
+            "detail": f"Config pushed, but reboot request failed: {reboot.detail}",
+        }
+    return {"ok": True, "detail": "Config pushed and plate rebooting"}
 
 
 @app.post("/api/plates/{plate_id}/init")
