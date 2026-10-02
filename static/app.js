@@ -427,16 +427,27 @@
     img.src = `/api/plates/${p.id}/snapshot?t=${Date.now()}`;
   }
 
-  async function pushMqttFromBadge() {
-    // Silently no-op for non-admins — they shouldn't be able to reconfigure
-    // plates, and we don't want to flash a toast at them for a click they
-    // probably didn't realise would do anything.
-    if (!meInfo || !meInfo.is_admin) return;
-    const pid = currentPlateId;
-    if (!pid) { toast("No plate selected", "error"); return; }
-    const plate = currentPlate();
-    const name = plate ? plate.name : "this plate";
-    if (!confirm(`Push the saved MQTT broker settings to "${name}" and reboot it?`)) return;
+  async function pushMqttWithConfirm(pid, name, extraHint) {
+    // Fetch the server-side preview first so the confirmation dialog can
+    // show the host that will actually land on the plate — the server
+    // substitutes the host's LAN IP for localhost / 127.*, and the admin
+    // should see that resolved value before committing to a reboot.
+    let previewLine;
+    try {
+      const pr = await fetch(`/api/plates/${encodeURIComponent(pid)}/push-mqtt-config/preview`);
+      if (pr.ok) {
+        const p = await pr.json();
+        previewLine = `  host: ${p.host}\n  port: ${p.port}\n  user: ${p.user || "(none)"}`;
+      } else {
+        previewLine = "  (unable to preview — proceeding will push the saved config)";
+      }
+    } catch (e) {
+      previewLine = `  (preview failed: ${e})`;
+    }
+    const msg = `Push MQTT broker settings to "${name}" and reboot it?\n\n` +
+                previewLine +
+                (extraHint ? `\n\n${extraHint}` : "");
+    if (!confirm(msg)) return;
     try {
       const r = await fetch(`/api/plates/${encodeURIComponent(pid)}/push-mqtt-config`,
                             { method: "POST" });
@@ -449,6 +460,17 @@
     } catch (e) {
       toast(`Push failed: ${e}`, "error");
     }
+  }
+
+  async function pushMqttFromBadge() {
+    // Silently no-op for non-admins — they shouldn't be able to reconfigure
+    // plates, and we don't want to flash a toast at them for a click they
+    // probably didn't realise would do anything.
+    if (!meInfo || !meInfo.is_admin) return;
+    const pid = currentPlateId;
+    if (!pid) { toast("No plate selected", "error"); return; }
+    const plate = currentPlate();
+    await pushMqttWithConfirm(pid, plate ? plate.name : "this plate");
   }
 
   async function apiInit() {
@@ -842,24 +864,10 @@
         toast("Set the plate's IP address first", "error");
         return;
       }
-      const msg = `Push the current MQTT broker settings to "${plateName}" and reboot it?\n\n` +
-                  `The plate will drop its connection and come back on the new broker ` +
-                  `in ~15 seconds. Make sure the broker fields below are what you want ` +
-                  `before continuing — any unsaved Setup changes will NOT be pushed; only ` +
-                  `what's already saved on the server.`;
-      if (!confirm(msg)) return;
-      try {
-        const r = await fetch(`/api/plates/${encodeURIComponent(plateId)}/push-mqtt-config`,
-                              { method: "POST" });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          toast(`Push failed: ${j.detail || r.statusText}`, "error");
-          return;
-        }
-        toast(j.detail || "Pushed", "ok");
-      } catch (e) {
-        toast(`Push failed: ${e}`, "error");
-      }
+      const hint = "Pushes the SAVED broker settings — any unsaved changes " +
+                   "in this Setup form won't be included. Plate will reboot " +
+                   "and reconnect in ~15 seconds.";
+      await pushMqttWithConfirm(plateId, plateName, hint);
     });
     row.querySelectorAll("[data-size]").forEach((b) => {
       b.addEventListener("click", () => {

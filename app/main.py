@@ -438,6 +438,19 @@ async def snapshot_api(plate_id: str, request: Request):
     )
 
 
+@app.get("/api/plates/{plate_id}/push-mqtt-config/preview")
+async def push_mqtt_config_preview(
+    plate_id: str,
+    _: ResolvedUser = Depends(require_admin),
+):
+    """What the push would send to the plate — for the confirmation dialog
+    so the admin can see the resolved host (loopback gets swapped for the
+    LAN IP) before committing to a reboot."""
+    plate = _get_plate(plate_id)
+    cfg = config.load_config()
+    return plate_http.resolve_push_payload(plate, cfg)
+
+
 @app.post("/api/plates/{plate_id}/push-mqtt-config")
 async def push_mqtt_config_api(
     plate_id: str,

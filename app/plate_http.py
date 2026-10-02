@@ -86,6 +86,16 @@ def _base_url(plate: Plate) -> Optional[str]:
     return f"http://{ip}"
 
 
+def resolve_push_payload(plate: Plate, broker: BrokerConfig) -> dict:
+    """Return what `push_mqtt_config` would POST to the plate (sans password),
+    for UI preview before confirming."""
+    return {
+        "host": _broker_host_for_plate(broker.host, plate.ip_address or ""),
+        "port": int(broker.port) if broker.port else 1883,
+        "user": broker.username or "",
+    }
+
+
 async def push_mqtt_config(plate: Plate, broker: BrokerConfig) -> PlateHttpResult:
     """POST the broker's connection details into the plate's MQTT config.
 
