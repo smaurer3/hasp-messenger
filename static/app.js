@@ -609,6 +609,9 @@
     // Setup + Users are admin-only (LAN counts as admin).
     $("open-broker").style.display = meInfo.is_admin ? "" : "none";
     $("open-users").style.display = meInfo.is_admin ? "" : "none";
+    // Only admins see the hand cursor on the plate badge — it's the one
+    // interactivity hint we give them for the push-MQTT click.
+    $("plate-badge").classList.toggle("clickable", !!meInfo.is_admin);
   }
 
   function showAccessDenied(detail) {
