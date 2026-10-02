@@ -94,6 +94,11 @@ label.checkrow {
 .plate-row-head .p-name { flex: 1; font-weight: 600; }
 .plate-row .p-delete { padding: 2px 8px; }
 .plate-row .p-push-mqtt { padding: 2px 10px; font-size: 12px; white-space: nowrap; }
+
+/* Plate badge is clickable (admin only) to push MQTT config, but must look
+   exactly like the plain dot+text next to it — no underline, no colour
+   change, no cursor change. Hover tooltip tells users what it does. */
+.plate-badge { display: inline-flex; align-items: center; gap: 10px; }
 .plate-row .presets { margin-top: 4px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 

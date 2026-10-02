@@ -330,10 +330,19 @@
     const dot = $("plate-dot"), s = $("plate-status");
     s.textContent = "Plate";
     const v = (lastPlateLwt[currentPlateId] || "").toLowerCase();
-    if (!currentPlateId) dot.className = "dot dot-off";
-    else if (v.includes("online")) dot.className = "dot dot-on";
-    else if (v.includes("offline")) dot.className = "dot dot-off";
-    else dot.className = "dot dot-warn";
+    let stateDesc;
+    if (!currentPlateId) { dot.className = "dot dot-off"; stateDesc = "no plate selected"; }
+    else if (v.includes("online")) { dot.className = "dot dot-on"; stateDesc = "online"; }
+    else if (v.includes("offline")) { dot.className = "dot dot-off"; stateDesc = "offline"; }
+    else { dot.className = "dot dot-warn"; stateDesc = "status unknown"; }
+    // Admin-only hover tip: click pushes saved broker settings to the plate.
+    // Non-admins see just the state description.
+    const badge = $("plate-badge");
+    if (meInfo && meInfo.is_admin) {
+      badge.title = `Plate: ${stateDesc}. Click to push the saved MQTT broker settings to this plate and reboot it — useful after moving it to a new network.`;
+    } else {
+      badge.title = `Plate: ${stateDesc}`;
+    }
   }
 
   // ---------- Countdown ----------
@@ -416,6 +425,30 @@
     };
     // Cache-buster so the browser always re-requests.
     img.src = `/api/plates/${p.id}/snapshot?t=${Date.now()}`;
+  }
+
+  async function pushMqttFromBadge() {
+    // Silently no-op for non-admins — they shouldn't be able to reconfigure
+    // plates, and we don't want to flash a toast at them for a click they
+    // probably didn't realise would do anything.
+    if (!meInfo || !meInfo.is_admin) return;
+    const pid = currentPlateId;
+    if (!pid) { toast("No plate selected", "error"); return; }
+    const plate = currentPlate();
+    const name = plate ? plate.name : "this plate";
+    if (!confirm(`Push the saved MQTT broker settings to "${name}" and reboot it?`)) return;
+    try {
+      const r = await fetch(`/api/plates/${encodeURIComponent(pid)}/push-mqtt-config`,
+                            { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast(`Push failed: ${j.detail || r.statusText}`, "error");
+        return;
+      }
+      toast(j.detail || "Pushed", "ok");
+    } catch (e) {
+      toast(`Push failed: ${e}`, "error");
+    }
   }
 
   async function apiInit() {
@@ -939,6 +972,7 @@
     $("snapshot-refresh").addEventListener("click", refreshSnapshot);
 
     $("plate-select").addEventListener("change", (e) => setCurrentPlate(e.target.value));
+    $("plate-badge").addEventListener("click", pushMqttFromBadge);
 
     $("open-broker").addEventListener("click", () => {
       loadAdminConfig().then((ok) => { if (ok) $("broker-modal").showModal(); });
